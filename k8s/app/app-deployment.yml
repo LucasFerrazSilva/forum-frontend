@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ff-app-deployment
+  namespace: forum
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: ff-app
+  template:
+    metadata:
+      labels:
+        app: ff-app
+    spec:
+      containers:
+        - name: ff-app
+          image: lucasferraz95/forum-frontend:1.0.0
+          ports:
+            - containerPort: 80

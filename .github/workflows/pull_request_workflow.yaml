@@ -1,0 +1,97 @@
+name: Publish Docker image
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  push_to_registry:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      IMAGE_NAME: forum-frontend
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Resolve app version (package.json)
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@e92390c5fb421da1463c202d546fed0ec5c39f20
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image (versioned)
+        run: docker build -f Dockerfile -t "$DOCKER_USERNAME/$IMAGE_NAME:$APP_VERSION" .
+
+      - name: Push Docker image (versioned)
+        run: docker push "$DOCKER_USERNAME/$IMAGE_NAME:$APP_VERSION"
+
+      - name: Tag and push latest (optional)
+        run: |
+          docker tag "$DOCKER_USERNAME/$IMAGE_NAME:$APP_VERSION" "$DOCKER_USERNAME/$IMAGE_NAME:latest"
+          docker push "$DOCKER_USERNAME/$IMAGE_NAME:latest"
+
+  deploy_to_vps:
+    needs: push_to_registry
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      IMAGE_NAME: forum-frontend
+      APP_VERSION: ${{ needs.push_to_registry.outputs.app_version }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+
+      - name: Copy k8s manifests to VPS
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: "k8s/*"
+          target: "~/forum-k8s"
+          strip_components: 1
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: DOCKER_USERNAME,IMAGE_NAME,APP_VERSION
+          script: |
+            set -e
+
+            kubectl get namespace forum >/dev/null 2>&1 || kubectl create namespace forum
+
+            kubectl apply -f ~/forum-k8s/app/app-certificate.yaml
+            kubectl apply -f ~/forum-k8s/app/app-deployment.yml
+            kubectl apply -f ~/forum-k8s/app/app-service.yml
+            kubectl apply -f ~/forum-k8s/app/app-ingressroute.yml
+
+            kubectl set image deployment/ff-app-deployment ff-app="$DOCKER_USERNAME/$IMAGE_NAME:$APP_VERSION" -n forum
+
+            kubectl rollout status deployment/ff-app-deployment -n forum --timeout=300s
+      
