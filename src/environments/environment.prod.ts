@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://api.yourforum.com',
+  apiUrl: 'https://forum.lucasferraz.cloud',
   appName: 'Forum App'
 };
