@@ -1,0 +1,25 @@
+<div class="title">
+  <h1>Status</h1>
+  @if(fetchStatus === FetchStatus.LOADING) {
+    <span>🟡</span>
+  } @else if(fetchStatus === FetchStatus.LOADED) {
+    <span>🟢</span>
+  } @else {
+    <span>🔴</span>
+  }
+</div>
+
+@if(fetchStatus === FetchStatus.LOADING) {
+  <span>Carregando...</span>
+} @else if(fetchStatus === FetchStatus.ERROR) {
+  <span>Erro ao buscar dados de status do Back-end</span>
+}
+
+<div class="status-info" *ngIf="status$ | async as status">
+  <span>Última atualização: {{ status.updatedAt | date:'dd/MM/yyyy HH:mm:ss':'UTC' }}</span>
+
+  <h2>Banco de dados</h2>
+  <span>Versão: {{status.database.version}}</span>
+  <span>Conexões abertas: {{status.database.openedConnections}}</span>
+  <span>Conexões máximas: {{status.database.maxConnections}}</span>
+</div>

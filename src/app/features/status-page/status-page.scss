@@ -1,0 +1,12 @@
+.title {
+    display: flex;
+    flex-direction: row;
+    gap: 5px;
+    align-items: center;
+}
+
+.status-info {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
